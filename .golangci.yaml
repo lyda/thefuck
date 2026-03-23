@@ -1,0 +1,11 @@
+---
+
+linters:
+  disable-all: true
+  enable:
+    - errcheck
+    - gofmt
+    - gosec
+    - govet
+    - staticcheck
+    - revive

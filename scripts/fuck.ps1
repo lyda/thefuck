@@ -1,21 +1,20 @@
-if ((Get-Command "fuck").CommandType -eq "Function") {
+if ((Get-Command "fuck" -ErrorAction Ignore).CommandType -eq "Function") {
 	fuck @args;
 	[Console]::ResetColor()
 	exit
 }
 
-"First time use of thefuck detected. "
+"First time use of thefuck detected."
 
 if ((Get-Content $PROFILE -Raw -ErrorAction Ignore) -like "*thefuck*") {
 } else {
-	"  - Adding thefuck intialization to user `$PROFILE"
-	$script = "`n`$env:PYTHONIOENCODING='utf-8' `niex `"`$(thefuck --alias)`"";
+	"  - Adding thefuck initialisation to user `$PROFILE"
+	$script = "`niex `"`$(thefuck init powershell)`"";
 	Write-Output $script | Add-Content $PROFILE
 }
 
 "  - Adding fuck() function to current session..."
-$env:PYTHONIOENCODING='utf-8'
-iex "$($(thefuck --alias).Replace("function fuck", "function global:fuck"))"
+iex "$($(thefuck init powershell).Replace("function fuck", "function global:fuck"))"
 
 "  - Invoking fuck()`n"
 fuck @args;

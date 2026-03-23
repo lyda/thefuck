@@ -1,92 +1,132 @@
-# Report issues
-If you have any issue with The Fuck, sorry about that, but we will do what we
-can to fix that. Actually, maybe we already have, so first thing to do is to
-update The Fuck and see if the bug is still there.
+# Reporting issues
 
-If it is (sorry again), check if the problem has not already been reported and
-if not, just open an issue on [GitHub](https://github.com/nvbn/thefuck) with
-the following basic information:
-  - the output of `thefuck --version` (something like `The Fuck 3.1 using
-    Python 3.5.0`);
-  - your shell and its version (`bash`, `zsh`, *Windows PowerShell*, etc.);
-  - your system (Debian 7, ArchLinux, Windows, etc.);
-  - how to reproduce the bug;
-  - the output of The Fuck with `THEFUCK_DEBUG=true` exported (typically execute
-    `export THEFUCK_DEBUG=true` in your shell before The Fuck);
-  - if the bug only appears with a specific application, the output of that
-    application and its version;
-  - anything else you think is relevant.
+If you have any issue with *The Fuck*, check if it's already been reported and
+if not, open an issue on [GitHub](https://github.com/lyda/thefuck) with:
 
-It's only with enough information that we can do something to fix the problem.
+  * your shell and its version (`bash`, `zsh`, `fish`, `tcsh`);
+  * your OS and version;
+  * how to reproduce the bug;
+  * the output of the failing command and what *The Fuck* did (or didn't do);
+  * anything else you think is relevant.
 
-# Make a pull request
-We gladly accept pull request on the [official
-repository](https://github.com/nvbn/thefuck) for new rules, new features, bug
-fixes, etc.
+# Pull requests
+
+Pull requests are welcome for new rules, bug fixes, and improvements.
 
 # Developing
 
-In order to develop locally, there are two options:
+## Prerequisites
 
-- Develop using a local installation of Python 3 and setting up a virtual environment
-- Develop using an automated VSCode Dev Container.
+- Always uses the most recent version of Go.
+- `staticcheck` and `gosec` are managed as Go tool dependencies — no separate install needed
 
-## Develop using local Python installation
-
-[Create and activate a Python 3 virtual environment.](https://docs.python.org/3/tutorial/venv.html)
-
-Install `The Fuck` for development:
+## Getting started
 
 ```bash
-pip install -r requirements.txt
-python setup.py develop
+git clone https://github.com/lyda/thefuck
+cd thefuck
+make
 ```
 
-Run code style checks:
+## Make targets
 
-```bash
-flake8
+| Target          | Description                                         |
+|-----------------|-----------------------------------------------------|
+| `make build`    | Build `./bin/thefuck`                               |
+| `make check`    | Run all checks: fmt, vet, staticcheck, gosec, tests |
+| `make fix`      | Format code, update dependencies, run `go fix`      |
+| `make fmt`      | Check formatting (fails if any file needs `gofmt`)  |
+| `make vet`      | Run `go vet`                                        |
+| `make lint`     | Run `staticcheck`                                   |
+| `make sec`      | Run `gosec` security checks                         |
+| `make test`     | Run tests with race detector and coverage           |
+| `make coverage` | Generate `coverage.html` with per-file breakdown    |
+| `make install`  | Install binary to `$GOPATH/bin`                     |
+| `make clean`    | Remove build artifacts                              |
+
+Before submitting a PR, run `make check` to make sure everything passes. If
+`make fmt` fails, run `make fix` to auto-format and tidy the code.
+
+## Adding a rule
+
+Each rule lives in its own file in `internal/rules/`. A minimal rule looks like:
+
+```go
+package rules
+
+import (
+    "strings"
+
+    "github.com/lyda/thefuck/internal/types"
+)
+
+func init() {
+    register(Rule{
+        Name: "my_rule",
+        Match: func(cmd types.Command) bool {
+            return strings.Contains(cmd.Output, "some error")
+        },
+        GetNewCommand: func(cmd types.Command) []types.CorrectedCommand {
+            return single(strings.Replace(cmd.Script, "wrong", "right", 1))
+        },
+    })
+}
 ```
 
-Run unit tests:
+### Available helpers
 
-```bash
-pytest
+Defined in `internal/rules/rules.go`:
+
+- `single(script string)` — return one correction
+- `multi(scripts []string)` — return multiple corrections
+- `shellAnd(cmds ...string)` — join with shell AND operator (`&&` for bash/zsh/tcsh, `; and ` for fish)
+- `replaceArgument(script, from, to string)` — replace a shell word in a command string
+- `getCloseMatches(word string, possibilities []string, cutoff float64)` — fuzzy match, cutoff 0.0–1.0
+- `getAllMatchedCommands(output string, separators []string)` — extract suggestion lines after a separator
+
+### `types.Command` fields
+
+- `cmd.Script` — the original command string
+- `cmd.Output` — combined stdout+stderr from re-running the command
+- `cmd.ScriptParts()` — the command split into shell words
+
+### Caching subprocess calls
+
+If your rule runs a subprocess to discover valid commands (e.g. parsing help
+text), cache the result with `sync.Once`:
+
+```go
+var (
+    myCommandsOnce sync.Once
+    myCommands     []string
+)
+
+func getMyCommands() []string {
+    myCommandsOnce.Do(func() {
+        out, _ := exec.Command("mytool", "help").CombinedOutput() // #nosec G204
+        // parse out...
+    })
+    return myCommands
+}
 ```
 
-Run unit and functional tests (requires docker):
+### Security annotations
 
-```bash
-pytest --enable-functional
+`gosec` will flag certain patterns that are intentional in this codebase:
+
+- `exec.Command` with a variable argument &rarr; add `// #nosec G204`
+- `int(fd)` conversion from `uintptr` &rarr; add `// #nosec G115`
+- `os.Open` with a variable path &rarr; add `// #nosec G304` (or `G304,G703` if taint analysis also fires)
+
+### Rule priority
+
+Lower priority value = presented first. Default is 1000. Set a custom priority
+if your rule should rank above or below the default:
+
+```go
+register(Rule{
+    Name:     "my_rule",
+    Priority: 100, // show before default-priority rules
+    ...
+})
 ```
-
-For sending package to pypi:
-
-```bash
-sudo apt-get install pandoc
-./release.py
-```
-
-## Develop using Dev Container
-
-To make local development easier a [VSCode Devcontainer](https://code.visualstudio.com/docs/remote/remote-overview) is included with this repository. This will allows you to spin up a Docker container with all the necessary prerequisites for this project pre-installed ready to go, no local Python install/setup required.
-
-### Prerequisites
-
-To use the container you require:
-- [Docker](https://www.docker.com/products/docker-desktop)
-- [VSCode](https://code.visualstudio.com/)
-- [VSCode Remote Development Extension](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.vscode-remote-extensionpack)
-- [Windows Users Only]: [Installation of WSL2 and configuration of Docker to use it](https://docs.docker.com/docker-for-windows/wsl/)
-
-Full notes about [installation are here](https://code.visualstudio.com/docs/remote/containers#_installation)
-
-### Running the container
-
-Assuming you have the prerequisites:
-
-1. Open VSCode
-1. Open command palette (CMD+SHIFT+P (mac) or CTRL+SHIFT+P (windows))
-1. Select `Remote-Containers: Reopen in Container`.
-1. Container will be built, install all pip requirements and your VSCode will mount into it automagically.
-1. Your VSCode and container now essentially become a throw away environment.
